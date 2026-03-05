@@ -32,9 +32,9 @@ export const api = {
     historico: (pacienteId) => req("GET", `/internacoes/paciente/${pacienteId}`),
     movimentacoes: (internacaoId) => req("GET", `/internacoes/${internacaoId}/movimentacoes`),
   },
-  leitos: {
-    dashboard: () => req("GET", "/leitos/dashboard"),
-    disponiveis: (setor) => req("GET", `/leitos/disponiveis?setor=${setor}`),
+ leitos: {
+  dashboard: () => req("GET", "/leitos/dashboard"),
+  disponiveis: (setor) => req("GET", `/leitos/disponiveis?setor=${setor}`),
 },
   prescricoes: {
     listar: (internacaoId) => req("GET", `/prescricoes/internacao/${internacaoId}`),

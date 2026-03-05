@@ -1,22 +1,41 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../services/api";
 
-const EMPTY_FORM = { nome: "", cpf: "", sexo: "", dataNascimento: "" };
+const EMPTY_FORM = {
+  nome: "",
+  cpf: "",
+  sexo: "",
+  dataNascimento: "",
+  cep: "",
+  logradouro: "",
+  numero: "",
+  complemento: "",
+  bairro: "",
+  cidade: "",
+  uf: "",
+};
 
 function formatCpf(v) {
   return v.replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4").slice(0, 14);
+}
+
+function formatCep(v) {
+  return v.replace(/\D/g, "").replace(/(\d{5})(\d{3})/, "$1-$2").slice(0, 9);
 }
 
 export default function Pacientes() {
   const [pacientes, setPacientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [modal, setModal] = useState(null); // null | 'new' | 'edit'
+  const [modal, setModal] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
   const [search, setSearch] = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepError, setCepError] = useState(null);
+  const numeroRef = useRef(null);
 
   const load = async () => {
     try {
@@ -32,21 +51,79 @@ export default function Pacientes() {
 
   useEffect(() => { load(); }, []);
 
-  const openNew = () => { setForm(EMPTY_FORM); setEditId(null); setFormError(null); setModal("form"); };
-  const openEdit = (p) => {
-    setForm({ nome: p.nome, cpf: p.cpf, sexo: p.sexo, dataNascimento: p.dataNascimento });
-    setEditId(p.id);
+  const openNew = () => {
+    setForm(EMPTY_FORM);
+    setEditId(null);
     setFormError(null);
+    setCepError(null);
     setModal("form");
   };
+
+  const openEdit = (p) => {
+    setForm({
+      nome: p.nome || "",
+      cpf: p.cpf || "",
+      sexo: p.sexo || "",
+      dataNascimento: p.dataNascimento || "",
+      cep: p.cep || "",
+      logradouro: p.logradouro || "",
+      numero: p.numero || "",
+      complemento: p.complemento || "",
+      bairro: p.bairro || "",
+      cidade: p.cidade || "",
+      uf: p.uf || "",
+    });
+    setEditId(p.id);
+    setFormError(null);
+    setCepError(null);
+    setModal("form");
+  };
+
   const closeModal = () => setModal(null);
 
+  const buscarCep = async (cepRaw) => {
+    const cep = cepRaw.replace(/\D/g, "");
+    if (cep.length !== 8) return;
+    setCepLoading(true);
+    setCepError(null);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const data = await res.json();
+      if (data.erro) {
+        setCepError("CEP nao encontrado.");
+        setForm(f => ({ ...f, logradouro: "", bairro: "", cidade: "", uf: "" }));
+        return;
+      }
+      setForm(f => ({
+        ...f,
+        logradouro: data.logradouro || "",
+        bairro: data.bairro || "",
+        cidade: data.localidade || "",
+        uf: data.uf || "",
+      }));
+      setTimeout(() => numeroRef.current?.focus(), 100);
+    } catch {
+      setCepError("Erro ao buscar CEP. Verifique sua conexao.");
+    } finally {
+      setCepLoading(false);
+    }
+  };
+
+  const handleCepChange = (e) => {
+    const formatted = formatCep(e.target.value);
+    setForm(f => ({ ...f, cep: formatted }));
+    if (formatted.replace(/\D/g, "").length === 8) {
+      buscarCep(formatted);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!form.nome || !form.cpf || !form.sexo || !form.dataNascimento) {
-      setFormError("Preencha todos os campos obrigatórios.");
+    if (!form.nome || !form.cpf || !form.sexo || !form.dataNascimento || !form.cep) {
+      setFormError("Preencha todos os campos obrigatorios.");
       return;
     }
-    setSaving(true); setFormError(null);
+    setSaving(true);
+    setFormError(null);
     try {
       if (editId) {
         await api.pacientes.atualizar(editId, form);
@@ -102,7 +179,7 @@ export default function Pacientes() {
         {loading ? (
           <div className="loading-center"><span className="spinner" /> Carregando...</div>
         ) : error ? (
-          <div className="card-body"><div className="alert alert-error">⚠ {error}</div></div>
+          <div className="card-body"><div className="alert alert-error">Erro: {error}</div></div>
         ) : filtered.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">👤</div>
@@ -118,7 +195,8 @@ export default function Pacientes() {
                   <th>CPF</th>
                   <th>Sexo</th>
                   <th>Idade</th>
-                  <th>Ações</th>
+                  <th>Cidade/UF</th>
+                  <th>Acoes</th>
                 </tr>
               </thead>
               <tbody>
@@ -133,6 +211,9 @@ export default function Pacientes() {
                       </span>
                     </td>
                     <td>{calcIdade(p.dataNascimento)}</td>
+                    <td className="text-muted">
+                      {p.cidade ? `${p.cidade}/${p.uf}` : "-"}
+                    </td>
                     <td>
                       <div className="flex gap-2">
                         <button className="btn btn-outline btn-sm" onClick={() => openEdit(p)}>Editar</button>
@@ -149,13 +230,15 @@ export default function Pacientes() {
 
       {modal === "form" && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && closeModal()}>
-          <div className="modal">
+          <div className="modal" style={{ maxWidth: 620 }}>
             <div className="modal-header">
               <span className="modal-title">{editId ? "Editar Paciente" : "Novo Paciente"}</span>
-              <button className="modal-close" onClick={closeModal}>×</button>
+              <button className="modal-close" onClick={closeModal}>x</button>
             </div>
             <div className="modal-body">
-              {formError && <div className="alert alert-error">⚠ {formError}</div>}
+              {formError && <div className="alert alert-error">{formError}</div>}
+
+              <p style={{ fontWeight: 600, marginBottom: 8, color: "var(--primary)" }}>Dados Pessoais</p>
               <div className="form-grid">
                 <div className="form-group full">
                   <label>Nome Completo *</label>
@@ -191,6 +274,76 @@ export default function Pacientes() {
                   />
                 </div>
               </div>
+
+              <p style={{ fontWeight: 600, margin: "16px 0 8px", color: "var(--primary)" }}>Endereco</p>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>CEP *</label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      value={form.cep}
+                      onChange={handleCepChange}
+                      placeholder="00000-000"
+                      maxLength={9}
+                    />
+                    {cepLoading && (
+                      <span className="spinner" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }} />
+                    )}
+                  </div>
+                  {cepError && <span style={{ color: "var(--danger)", fontSize: 12 }}>{cepError}</span>}
+                </div>
+                <div className="form-group" style={{ flex: 2 }}>
+                  <label>Logradouro</label>
+                  <input
+                    value={form.logradouro}
+                    onChange={e => setForm({ ...form, logradouro: e.target.value })}
+                    placeholder="Rua, Avenida..."
+                  />
+                </div>
+                <div className="form-group" style={{ flex: "0 0 80px" }}>
+                  <label>Numero</label>
+                  <input
+                    ref={numeroRef}
+                    value={form.numero}
+                    onChange={e => setForm({ ...form, numero: e.target.value })}
+                    placeholder="Nr"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Complemento</label>
+                  <input
+                    value={form.complemento}
+                    onChange={e => setForm({ ...form, complemento: e.target.value })}
+                    placeholder="Apto, Bloco..."
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Bairro</label>
+                  <input
+                    value={form.bairro}
+                    onChange={e => setForm({ ...form, bairro: e.target.value })}
+                    placeholder="Bairro"
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 2 }}>
+                  <label>Cidade</label>
+                  <input
+                    value={form.cidade}
+                    onChange={e => setForm({ ...form, cidade: e.target.value })}
+                    placeholder="Cidade"
+                  />
+                </div>
+                <div className="form-group" style={{ flex: "0 0 70px" }}>
+                  <label>UF</label>
+                  <input
+                    value={form.uf}
+                    onChange={e => setForm({ ...form, uf: e.target.value.toUpperCase().slice(0, 2) })}
+                    placeholder="UF"
+                    maxLength={2}
+                  />
+                </div>
+              </div>
+
               <div className="form-actions">
                 <button className="btn btn-outline" onClick={closeModal}>Cancelar</button>
                 <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
