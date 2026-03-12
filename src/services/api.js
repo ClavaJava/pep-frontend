@@ -28,7 +28,7 @@ export const api = {
     internar: (pacienteId, dto) => req("POST", `/internacoes/${pacienteId}`, dto),
     listarAtivas: (page = 0, size = 20) => req("GET", `/internacoes/ativas?page=${page}&size=${size}`),
     darAlta: (id) => req("PUT", `/internacoes/${id}/alta`),
-    transferir: (id, novoSetor) => req("PUT", `/internacoes/${id}/transferir?novoSetor=${novoSetor}`),
+    transferir: (id, novoSetor, numeroLeito) => req("PUT", `/internacoes/${id}/transferir?novoSetor=${novoSetor}&numeroLeito=${numeroLeito}`),
     historico: (pacienteId) => req("GET", `/internacoes/paciente/${pacienteId}`),
     movimentacoes: (internacaoId) => req("GET", `/internacoes/${internacaoId}/movimentacoes`),
   },
